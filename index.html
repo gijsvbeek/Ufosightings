@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waarnemingslogboek — UFO-meldingen 1930–2014</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+:root{
+  --night:#0B1026; --panel:#111832; --line:#2A3354;
+  --ink:#E9E4D8; --ink-dim:#8B93B0;
+  --signal:#FFB454; --signal-soft:rgba(255,180,84,.14);
+  --comet:#7FD1E8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:var(--night);font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);overflow:hidden}
+#map{position:absolute;inset:0;background:var(--night)}
+.leaflet-container{background:var(--night)}
+
+.hud{position:absolute;top:16px;left:16px;z-index:1000;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;max-width:330px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.hud h1{font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--signal)}
+.hud .count{font-family:'Chakra Petch',sans-serif;font-size:24px;margin-top:8px;letter-spacing:.04em}
+.hud .count small{font-size:10.5px;color:var(--ink-dim);letter-spacing:.1em;text-transform:uppercase;display:block;margin-top:2px}
+.hud .stat{margin-top:8px;font-size:12px;line-height:1.5;color:var(--ink-dim);display:none}
+.hud .stat b{color:var(--comet);font-weight:500}
+.hud.kosmos .stat{display:block}
+
+.timeline{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;z-index:1000;width:min(880px,calc(100% - 28px));background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+.tl-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.year-display{font-family:'Chakra Petch',sans-serif;font-size:24px;font-weight:600;color:var(--signal);min-width:110px;letter-spacing:.04em}
+.tl-controls{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
+button{font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 11px;border-radius:7px;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+button:hover{border-color:var(--signal);color:var(--signal)}
+button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+button.active{background:var(--signal-soft);border-color:var(--signal);color:var(--signal)}
+.mode-group{display:flex}
+.mode-group button{border-radius:0;border-right-width:0}
+.mode-group button:first-child{border-radius:7px 0 0 7px}
+.mode-group button:last-child{border-radius:0 7px 7px 0;border-right-width:1px}
+button#mKosmos.active{background:rgba(127,209,232,.12);border-color:var(--comet);color:var(--comet)}
+
+.tl-body{display:flex;gap:16px;align-items:stretch;margin-top:10px}
+.orbit-wrap{display:none;flex:0 0 118px}
+.timeline.kosmos .orbit-wrap{display:block}
+#orbitCanvas{width:118px;height:118px}
+.histo-col{flex:1;min-width:0}
+.histo{position:relative;height:56px;cursor:pointer}
+.timeline.kosmos .histo{height:76px}
+.histo canvas{position:absolute;inset:0;width:100%;height:100%}
+input[type=range]{position:absolute;left:0;right:0;bottom:-6px;width:100%;-webkit-appearance:none;appearance:none;background:transparent;height:24px;cursor:pointer;margin:0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:var(--signal);border:3px solid var(--night);box-shadow:0 0 0 1px var(--signal),0 0 14px rgba(255,180,84,.6)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--signal);border:3px solid var(--night);box-shadow:0 0 0 1px var(--signal),0 0 14px rgba(255,180,84,.6)}
+input[type=range]:focus-visible{outline:2px solid var(--signal);outline-offset:4px}
+.timeline.kosmos input[type=range]::-webkit-slider-thumb{background:var(--comet);box-shadow:0 0 0 1px var(--comet),0 0 14px rgba(127,209,232,.6)}
+.timeline.kosmos input[type=range]::-moz-range-thumb{background:var(--comet);box-shadow:0 0 0 1px var(--comet),0 0 14px rgba(127,209,232,.6)}
+.tl-labels{display:flex;justify-content:space-between;font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.1em;color:var(--ink-dim);margin-top:10px}
+.timeline.total .year-display{opacity:.25}
+.timeline.total input[type=range]{opacity:0;pointer-events:none}
+
+.leaflet-popup-content-wrapper{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--panel);border:1px solid var(--line)}
+.leaflet-popup-content{margin:14px 16px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.55;max-width:260px}
+.pp-loc{font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;color:var(--signal);text-transform:uppercase}
+.pp-meta{font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase;margin:4px 0 0}
+.pp-desc{color:var(--ink);margin-top:8px}
+.pp-cosmo{margin-top:8px;font-size:11.5px;color:var(--comet)}
+.pp-src{margin-top:10px;font-size:11px}
+.pp-src a{color:var(--signal);text-decoration:none;border-bottom:1px solid rgba(255,180,84,.35)}
+.pp-src a:hover{border-bottom-color:var(--signal)}
+.pp-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+.leaflet-popup-close-button{color:var(--ink-dim) !important}
+
+.attrib{position:absolute;right:8px;bottom:2px;z-index:900;font-size:10px;color:var(--ink-dim)}
+@media (max-width:640px){
+  .hud{max-width:calc(100% - 32px);padding:10px 14px}
+  .year-display{font-size:19px;min-width:92px}
+  .orbit-wrap{flex-basis:96px}
+  #orbitCanvas{width:96px;height:96px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Wereldkaart met UFO-meldingen"></div>
+
+<div class="hud" id="hud">
+  <h1>Waarnemingslogboek</h1>
+  <div class="count"><span id="count">laden…</span><small id="countLabel">meldingen</small></div>
+  <div class="stat" id="cosmoStat"></div>
+</div>
+
+<div class="timeline" id="tl">
+  <div class="tl-top">
+    <div class="year-display" id="yearDisplay" aria-live="polite">1930</div>
+    <div class="tl-controls">
+      <div class="mode-group" role="group" aria-label="Weergave">
+        <button id="mYear" class="active">jaar</button><button id="mCum">t/m dit jaar</button><button id="mAll">totaal</button><button id="mKosmos">&#9737; kosmos</button>
+      </div>
+      <button id="playBtn">&#9658; afspelen</button>
+    </div>
+  </div>
+  <div class="tl-body">
+    <div class="orbit-wrap"><canvas id="orbitCanvas" aria-label="Baandiagram: positie van de aarde rond de zon"></canvas></div>
+    <div class="histo-col">
+      <div class="histo">
+        <canvas id="histoCanvas"></canvas>
+        <input type="range" id="yearSlider" min="1930" max="2014" value="1930" step="1" aria-label="Kies een moment">
+      </div>
+      <div class="tl-labels" id="tlLabels"><span>1930</span><span>1950</span><span>1970</span><span>1990</span><span>2014</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="attrib">Landgrenzen: Natural Earth · meldingen: NUFORC · astronomie: berekend (zonlengte / maanfase)</div>
+
+<script type="module">
+// Data leeft in /data/*.json (statisch geserveerd via Vercel's CDN) en wordt hier opgehaald.
+// DATA: [jaar, maand, dag, tijd, lat, lon, plaats, vorm, duur, beschrijving, zonlengte, maanfase(0-7)]
+const [DATA, SL_HIST, YEAR_HIST, WORLD] = await Promise.all(
+  ['data/sightings.json','data/slhist.json','data/yearhist.json','data/world.json']
+  .map(u => fetch(u).then(r => { if(!r.ok) throw new Error(u); return r.json(); }))
+).catch(err => { document.getElementById('count').textContent = 'data laden mislukt'; throw err; });
+
+const MIN_Y = 1930, MAX_Y = 2014;
+const MAANDEN = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+const MAAN_GLYPH = ['\u{1F311}','\u{1F312}','\u{1F313}','\u{1F314}','\u{1F315}','\u{1F316}','\u{1F317}','\u{1F318}'];
+const MAAN_NAAM = ['nieuwe maan','wassende sikkel','eerste kwartier','wassende maan','volle maan','afnemende maan','laatste kwartier','afnemende sikkel'];
+
+// Meteorenzwermen: piek-zonlengte + gemeten ratio uit de volledige dataset
+// ratio + p-waarde: binomiale toets op alle 80.324 meldingen (venster \u00b14\u00b0 vs baseline 5\u201315\u00b0)
+// significantiedrempel p < 0,0056 (0,05 gecorrigeerd voor 9 toetsen, Bonferroni)
+const SHOWERS = [
+  {n:'Quadrantiden', sl:283.2, dat:'3 jan',  ratio:1.46, p:'< 0,001', sig:true,  note:'significant, maar het is vuurwerk: zonder 30 dec\u20132 jan zakt de ratio naar 0,65'},
+  {n:'Lyriden',      sl:32.3,  dat:'22 apr', ratio:0.94, p:'0,054',   sig:false},
+  {n:'\u03b7-Aquariiden', sl:45.5, dat:'6 mei', ratio:0.94, p:'0,025', sig:false},
+  {n:'\u03b4-Aquariiden', sl:127.0, dat:'30 jul', ratio:0.90, p:'< 0,001', sig:false, note:'significant t\u00e9kort \u2014 vermoedelijk de zomerhelling in de data, geen hemeleffect'},
+  {n:'Perse\u00efden',   sl:140.0, dat:'12 aug', ratio:1.30, p:'< 0,001', sig:true, note:'robuuste piek \u2014 blijft staan in elk deeltijdvak'},
+  {n:'Orioniden',    sl:208.0, dat:'21 okt', ratio:0.88, p:'< 0,001', sig:false, note:'significant t\u00e9kort \u2014 vermoedelijk seizoenshelling, geen hemeleffect'},
+  {n:'Z-Tauriden',   sl:223.0, dat:'5 nov',  ratio:0.92, p:'0,003',   sig:false},
+  {n:'Leoniden',     sl:235.3, dat:'17 nov', ratio:1.31, p:'< 0,001', sig:true, note:'topjaar 1999 \u2014 het jaar van de Leonidenstorm'},
+  {n:'Geminiden',    sl:262.2, dat:'14 dec', ratio:1.04, p:'0,24',    sig:false},
+];
+const WIN = 4; // venster ±4° rond gekozen zonlengte
+// Menselijke piekdagen — sterkste 'signalen' in de data, maar aards van oorsprong
+const HUMAN = [
+  {n:'4 juli (VS): vuurwerk', sl:102.7, x:'5,5× een gemiddelde dag'},
+  {n:'jaarwisseling: vuurwerk & wensballonnen', sl:280.5, x:'1 jan is 3× een gemiddelde dag'},
+];
+function activeHuman(sl){ return HUMAN.find(h=>circ(sl,h.sl)<=WIN) || null; }
+
+// zonlengte -> geschatte datum (referentiejaar)
+function jdN(y,mo,d){const a=(14-mo)/12|0,Y=y+4800-a,M=mo+12*a-3;return d+((153*M+2)/5|0)+365*Y+(Y/4|0)-(Y/100|0)+(Y/400|0)-32045;}
+const SL2DATE = [];
+(function(){
+  const days=['',31,28,31,30,31,30,31,31,30,31,30,31];
+  for(let mo=1;mo<=12;mo++)for(let d=1;d<=days[mo];d++){
+    const n=jdN(2013,mo,d)-2451545.0, L=280.460+0.9856474*n, g=(357.528+0.9856003*n)*Math.PI/180;
+    SL2DATE.push([((L+1.915*Math.sin(g)+0.020*Math.sin(2*g))%360+360)%360, d, mo]);
+  }
+})();
+function slDate(sl){
+  let best=SL2DATE[0], bd=999;
+  for(const e of SL2DATE){const d=Math.min(Math.abs(e[0]-sl),360-Math.abs(e[0]-sl)); if(d<bd){bd=d;best=e;}}
+  return `\u2248 ${best[1]} ${MAANDEN[best[2]-1].slice(0,3)}`;
+}
+function circ(a,b){return Math.min(Math.abs(a-b),360-Math.abs(a-b));}
+function activeShower(sl){ return SHOWERS.find(s=>circ(sl,s.sl)<=WIN+2) || null; }
+
+// --- kaart ---
+const map = L.map('map',{zoomControl:false,worldCopyJump:true,attributionControl:false,minZoom:2,maxZoom:8}).setView([28,5],2);
+L.control.zoom({position:'topright'}).addTo(map);
+L.geoJSON(WORLD,{pane:'tilePane',style:{color:'#3A4468',weight:.7,fillColor:'#161F3D',fillOpacity:1,opacity:1},interactive:false}).addTo(map);
+const renderer=L.canvas({padding:.4});
+const layer=L.layerGroup().addTo(map);
+
+const byYear={};for(let y=MIN_Y;y<=MAX_Y;y++)byYear[y]=[];
+DATA.forEach(d=>{if(byYear[d[0]])byYear[d[0]].push(d);});
+function esc(s){const t=document.createElement('span');t.textContent=s;return t.innerHTML;}
+
+// jaarkleuren
+const STOPS=[[26,42,140],[38,120,178],[64,190,182],[122,209,81],[233,196,50],[244,120,50],[214,45,60]];
+function yearColor(y){
+  const t=(y-MIN_Y)/(MAX_Y-MIN_Y),p=t*(STOPS.length-1),i=Math.min(Math.floor(p),STOPS.length-2),f=p-i;
+  const c=STOPS[i].map((v,k)=>Math.round(v+(STOPS[i+1][k]-v)*f));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+function makeMarker(d,colorByYear){
+  const [jr,mnd,dag,tijd,lat,lon,loc,vorm,duur,desc,slv,mb]=d;
+  const col=colorByYear?yearColor(jr):(mode==='kosmos'?'#7FD1E8':'#FFB454');
+  const m=L.circleMarker([lat,lon],{renderer,radius:colorByYear?4:4.5,color:col,weight:1,opacity:.9,fillColor:col,fillOpacity:colorByYear?.45:.4});
+  m.on('click',()=>{
+    const mm=String(mnd).padStart(2,'0');
+    const src=`https://nuforc.org/subndx/?id=e${jr}${mm}`;
+    const sh=SHOWERS.find(s=>circ(slv,s.sl)<=WIN);
+    m.bindPopup(
+      `<div class="pp-loc">${esc(loc)}</div>`+
+      `<div class="pp-meta"><span class="pp-dot" style="background:${yearColor(jr)}"></span>${dag} ${MAANDEN[mnd-1]} ${jr} \u00b7 ${esc(tijd)} uur${duur?' \u00b7 duur: '+esc(duur):''}</div>`+
+      `<div class="pp-meta">vorm: ${esc(vorm)}</div>`+
+      `<div class="pp-cosmo">${MAAN_GLYPH[mb]} ${MAAN_NAAM[mb]} \u00b7 aardbaan ${slv}\u00b0${sh?`<br>\u2604 in het ${sh.n}-venster (\u00d7${sh.ratio.toFixed(2)})`:''}</div>`+
+      `<div class="pp-desc">${esc(desc)}</div>`+
+      `<div class="pp-src"><a href="${src}" target="_blank" rel="noopener">Volledig rapport op NUFORC (${MAANDEN[mnd-1]} ${jr}) \u2197</a></div>`
+    ).openPopup();
+  });
+  return m;
+}
+
+// --- state ---
+let year=MIN_Y, slSel=140, mode='year', playing=false, timer=null;
+const countEl=document.getElementById('count'),countLabel=document.getElementById('countLabel');
+const yearEl=document.getElementById('yearDisplay'),slider=document.getElementById('yearSlider');
+const tl=document.getElementById('tl'),hud=document.getElementById('hud');
+const cosmoStat=document.getElementById('cosmoStat'),tlLabels=document.getElementById('tlLabels');
+
+function erf(x){ // Abramowitz & Stegun 7.1.26
+  const s=x<0?-1:1;x=Math.abs(x);
+  const t=1/(1+0.3275911*x);
+  const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  return s*y;
+}
+function windowRatio(sl){
+  let w=0,b=0;
+  for(let d=0;d<360;d++){
+    const c=circ(d+0.5,sl);
+    if(c<=WIN)w+=SL_HIST[d]; else if(c>=WIN+1&&c<=15)b+=SL_HIST[d];
+  }
+  const wd=2*WIN+1,bd=2*(15-WIN);
+  // binomiale toets: onder H0 valt fractie 9/31 van (w+b) in het venster
+  const tot=w+b,p0=wd/(wd+bd);
+  const z=(w-tot*p0)/Math.sqrt(tot*p0*(1-p0));
+  const p=2*(1-0.5*(1+erf(Math.abs(z)/Math.SQRT2)));
+  return {w,ratio:(w/wd)/(b/bd),z,p};
+}
+function fmtP(p){return p<0.001?'< 0,001':('= '+p.toFixed(3).replace('.',','));}
+
+function render(){
+  layer.clearLayers();
+  let pts=[],colorByYear=false;
+  if(mode==='all'){pts=DATA;colorByYear=true;}
+  else if(mode==='cum'){for(let y=MIN_Y;y<=year;y++)pts=pts.concat(byYear[y]);}
+  else if(mode==='kosmos'){pts=DATA.filter(d=>circ(d[10],slSel)<=WIN);}
+  else pts=byYear[year];
+  pts.forEach(d=>layer.addLayer(makeMarker(d,colorByYear)));
+
+  let realN;
+  if(mode==='all') realN=YEAR_HIST.reduce((a,b)=>a+b,0);
+  else if(mode==='cum') realN=YEAR_HIST.slice(0,year-MIN_Y+1).reduce((a,b)=>a+b,0);
+  else if(mode==='year') realN=YEAR_HIST[year-MIN_Y];
+  else realN=null;
+  countEl.textContent = realN!==null ? realN.toLocaleString('nl-NL') : pts.length.toLocaleString('nl-NL');
+  tl.classList.toggle('total',mode==='all');
+  tl.classList.toggle('kosmos',mode==='kosmos');
+  hud.classList.toggle('kosmos',mode==='kosmos');
+
+  if(mode==='kosmos'){
+    yearEl.textContent=`${slSel}\u00b0 ${slDate(slSel)}`;
+    countLabel.textContent='meldingen op dit stuk aardbaan (alle jaren)';
+    const {w,ratio,p}=windowRatio(slSel);
+    const sh=activeShower(slSel);
+    const hu=activeHuman(slSel);
+    const SIG=0.0056; // 0,05 / 9 toetsen (Bonferroni)
+    let oordeel;
+    if(p<SIG && ratio>1) oordeel=hu?'significante piek (\u26a0 menselijke oorzaak)':'<b>significante piek</b>';
+    else if(p<SIG && ratio<1) oordeel='significant tekort (vermoedelijk seizoenseffect)';
+    else oordeel='geen significant effect';
+    cosmoStat.innerHTML=
+      `Volledige dataset: <b>${w.toLocaleString('nl-NL')}</b> meldingen in dit venster (\u00b1${WIN}\u00b0)<br>`+
+      `<b>\u00d7${ratio.toFixed(2)}</b> t.o.v. omliggende dagen \u00b7 p ${fmtP(p)} \u2192 ${oordeel}`+
+      (sh?`<br>\u2604 <b>${sh.n}</b> (piek ${sh.dat}) \u00b7 p ${sh.p}${sh.note?'<br>'+sh.note:''}`:'')+
+      (hu?`<br>\u26a0 <b>${hu.n}</b> \u2014 ${hu.x}; deze piek is menselijk, niet kosmisch`:'')+
+      `<br><span style="opacity:.75">Maanfase-effect over de hele dataset: meer meldingen rond nieuwe maan (\u03c7\u00b2 = 136,7; p < 0,001). Drempel per toets: p < 0,0056 (9 toetsen, Bonferroni).</span>`;
+    tlLabels.innerHTML='<span>mrt</span><span>jun</span><span>sep</span><span>dec</span><span>mrt</span>';
+    slider.min=0;slider.max=359;slider.value=slSel;
+  }else{
+    yearEl.textContent=mode==='all'?'\u2014':year;
+    const shown=` \u00b7 ${pts.length.toLocaleString('nl-NL')} op de kaart (steekproef)`;
+    countLabel.textContent=(mode==='all'?'meldingen, 1930\u20132014':mode==='cum'?`meldingen t/m ${year}`:`meldingen in ${year}`)+shown;
+    tlLabels.innerHTML='<span>1930</span><span>1950</span><span>1970</span><span>1990</span><span>2014</span>';
+    slider.min=MIN_Y;slider.max=MAX_Y;slider.value=year;
+  }
+  drawHisto();drawOrbit();
+}
+
+// --- histogram / zonlengte-spectrum ---
+const hc=document.getElementById('histoCanvas');
+function drawHisto(){
+  const dpr=window.devicePixelRatio||1,w=hc.clientWidth,h=hc.clientHeight;
+  hc.width=w*dpr;hc.height=h*dpr;
+  const ctx=hc.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
+  if(mode==='kosmos'){
+    const max=Math.max(...SL_HIST),bw=w/360;
+    // zwermvensters als lichte banden
+    for(const s of SHOWERS){
+      ctx.fillStyle='rgba(127,209,232,.10)';
+      const x0=(s.sl-WIN)/360*w;
+      ctx.fillRect(x0,0,(2*WIN)/360*w,h-12);
+    }
+    for(let d=0;d<360;d++){
+      const v=SL_HIST[d]/max,bh=Math.max(1,v*(h-18));
+      const sel=circ(d+0.5,slSel)<=WIN;
+      ctx.fillStyle=sel?'#7FD1E8':'#2A3354';
+      ctx.fillRect(d*bw,h-12-bh,Math.max(.8,bw-.2),bh);
+    }
+    // menselijke pieken als amberkleurige banden
+    for(const hm of HUMAN){
+      ctx.fillStyle='rgba(255,180,84,.12)';
+      ctx.fillRect((hm.sl-WIN)/360*w,0,(2*WIN)/360*w,h-12);
+    }
+    // zwermlabels (afkorting) onderaan
+    ctx.fillStyle='#8B93B0';ctx.font='8.5px Chakra Petch,sans-serif';ctx.textAlign='center';
+    for(const s of SHOWERS){if(s.sig)ctx.fillText('\u2604',s.sl/360*w,h-2);}
+  }else{
+    const n=MAX_Y-MIN_Y+1,bw=w/n;
+    const byY=YEAR_HIST; // echte aantallen, niet de steekproef
+    const max=Math.max(...byY);
+    for(let i=0;i<n;i++){
+      const y=MIN_Y+i,v=byY[i]/max,bh=Math.max(1.5,v*(h-6));
+      let fill;
+      if(mode==='all')fill=yearColor(y);
+      else{const sel=mode==='cum'?(y<=year):(y===year);fill=sel?'#FFB454':'#2A3354';}
+      ctx.fillStyle=fill;ctx.fillRect(i*bw+.5,h-bh,Math.max(1,bw-1.2),bh);
+    }
+  }
+}
+
+// --- baandiagram (signatuur van de kosmos-modus) ---
+const oc=document.getElementById('orbitCanvas');
+function drawOrbit(){
+  if(mode!=='kosmos')return;
+  const dpr=window.devicePixelRatio||1,w=oc.clientWidth,h=oc.clientHeight;
+  oc.width=w*dpr;oc.height=h*dpr;
+  const ctx=oc.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
+  const cx=w/2,cy=h/2,R=Math.min(w,h)/2-10;
+  // heliocentrische hoek = zonlengte + 180°
+  const ang=s=>(s+180)*Math.PI/180;
+  // baan
+  ctx.strokeStyle='#2A3354';ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.arc(cx,cy,R,0,2*Math.PI);ctx.stroke();
+  // zwermbogen op de baan
+  for(const s of SHOWERS){
+    const strong=s.sig && s.ratio>1;
+    ctx.strokeStyle=strong?'rgba(127,209,232,.9)':'rgba(127,209,232,.35)';
+    ctx.lineWidth=strong?3.5:2;
+    ctx.beginPath();ctx.arc(cx,cy,R,ang(s.sl-WIN),ang(s.sl+WIN));ctx.stroke();
+  }
+  // menselijke events als amberstreepjes op de baan
+  for(const hm of HUMAN){
+    ctx.strokeStyle='rgba(255,180,84,.55)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(cx,cy,R,ang(hm.sl-WIN),ang(hm.sl+WIN));ctx.stroke();
+  }
+  // zon
+  ctx.fillStyle='#FFB454';
+  ctx.beginPath();ctx.arc(cx,cy,5,0,2*Math.PI);ctx.fill();
+  ctx.strokeStyle='rgba(255,180,84,.35)';ctx.lineWidth=4;
+  ctx.beginPath();ctx.arc(cx,cy,7.5,0,2*Math.PI);ctx.stroke();
+  // aarde op gekozen positie
+  const ex=cx+R*Math.cos(ang(slSel)),ey=cy+R*Math.sin(ang(slSel));
+  ctx.fillStyle='#7FD1E8';
+  ctx.beginPath();ctx.arc(ex,ey,4.5,0,2*Math.PI);ctx.fill();
+  ctx.strokeStyle='rgba(127,209,232,.4)';ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(ex,ey,7,0,2*Math.PI);ctx.stroke();
+}
+
+// --- interactie ---
+slider.addEventListener('input',e=>{
+  if(mode==='kosmos')slSel=+e.target.value; else year=+e.target.value;
+  render();
+});
+const modeBtns={year:document.getElementById('mYear'),cum:document.getElementById('mCum'),all:document.getElementById('mAll'),kosmos:document.getElementById('mKosmos')};
+function setMode(m){
+  mode=m;
+  Object.entries(modeBtns).forEach(([k,b])=>b.classList.toggle('active',k===m));
+  if(m==='all'&&playing)stopPlay();
+  render();
+}
+Object.keys(modeBtns).forEach(k=>modeBtns[k].addEventListener('click',()=>setMode(k)));
+
+const playBtn=document.getElementById('playBtn');
+function stopPlay(){playing=false;clearInterval(timer);playBtn.innerHTML='\u25ba afspelen';playBtn.classList.remove('active');}
+playBtn.addEventListener('click',()=>{
+  if(playing){stopPlay();return;}
+  if(mode==='all')setMode('year');
+  playing=true;playBtn.innerHTML='\u275a\u275a pauze';playBtn.classList.add('active');
+  timer=setInterval(()=>{
+    if(mode==='kosmos'){slSel=(slSel+2)%360;}
+    else{year++;if(year>=MAX_Y){year=MAX_Y;stopPlay();}}
+    render();
+  },mode==='kosmos'?140:380);
+});
+window.addEventListener('resize',()=>{drawHisto();drawOrbit();});
+render();
+</script>
+</body>
+</html>
