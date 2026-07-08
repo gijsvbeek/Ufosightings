@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Waarnemingslogboek — UFO-meldingen 1930–2014</title>
+<title>Waarnemingslogboek — UFO-meldingen 1900–heden</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128760;</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -66,6 +67,7 @@ input[type=range]:focus-visible{outline:2px solid var(--signal);outline-offset:4
 .pp-meta{font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase;margin:4px 0 0}
 .pp-desc{color:var(--ink);margin-top:8px}
 .pp-cosmo{margin-top:8px;font-size:11.5px;color:var(--comet)}
+.pp-expl{margin-top:8px;font-size:11.5px;color:var(--ink-dim)}
 .pp-src{margin-top:10px;font-size:11px}
 .pp-src a{color:var(--signal);text-decoration:none;border-bottom:1px solid rgba(255,180,84,.35)}
 .pp-src a:hover{border-bottom-color:var(--signal)}
@@ -93,7 +95,7 @@ input[type=range]:focus-visible{outline:2px solid var(--signal);outline-offset:4
 
 <div class="timeline" id="tl">
   <div class="tl-top">
-    <div class="year-display" id="yearDisplay" aria-live="polite">1930</div>
+    <div class="year-display" id="yearDisplay" aria-live="polite">—</div>
     <div class="tl-controls">
       <div class="mode-group" role="group" aria-label="Weergave">
         <button id="mYear" class="active">jaar</button><button id="mCum">t/m dit jaar</button><button id="mAll">totaal</button><button id="mKosmos">&#9737; kosmos</button>
@@ -106,9 +108,9 @@ input[type=range]:focus-visible{outline:2px solid var(--signal);outline-offset:4
     <div class="histo-col">
       <div class="histo">
         <canvas id="histoCanvas"></canvas>
-        <input type="range" id="yearSlider" min="1930" max="2014" value="1930" step="1" aria-label="Kies een moment">
+        <input type="range" id="yearSlider" min="1900" max="2026" value="1900" step="1" aria-label="Kies een moment">
       </div>
-      <div class="tl-labels" id="tlLabels"><span>1930</span><span>1950</span><span>1970</span><span>1990</span><span>2014</span></div>
+      <div class="tl-labels" id="tlLabels"><span></span></div>
     </div>
   </div>
 </div>
@@ -116,38 +118,25 @@ input[type=range]:focus-visible{outline:2px solid var(--signal);outline-offset:4
 <div class="attrib">Landgrenzen: Natural Earth · meldingen: NUFORC · astronomie: berekend (zonlengte / maanfase)</div>
 
 <script type="module">
-// Data leeft in /data/*.json (statisch geserveerd via Vercel's CDN) en wordt hier opgehaald.
-// DATA: [jaar, maand, dag, tijd, lat, lon, plaats, vorm, duur, beschrijving, zonlengte, maanfase(0-7)]
-const [DATA, SL_HIST, YEAR_HIST, WORLD] = await Promise.all(
-  ['data/sightings.json','data/slhist.json','data/yearhist.json','data/world.json']
+// Data leeft in /data/*.json (statisch geserveerd) en komt uit de pipeline (pipeline/).
+// PUNT: [nuforcId, jaar, maand, dag, lat, lon, vormIdx, zonlengte*10, maanfase(0-7)]
+const [PTS_META, SL_HIST, YH, SH, WORLD] = await Promise.all(
+  ['data/points.json','data/slhist.json','data/yearhist.json','data/showers.json','data/world.json']
   .map(u => fetch(u).then(r => { if(!r.ok) throw new Error(u); return r.json(); }))
 ).catch(err => { document.getElementById('count').textContent = 'data laden mislukt'; throw err; });
 
-const MIN_Y = 1930, MAX_Y = 2014;
+const PTS = PTS_META.points;                 // gesorteerd op jaar/maand/dag
+const MIN_Y = PTS_META.minYear, MAX_Y = PTS_META.maxYear;
+const YEAR_HIST = YH.counts;                 // echte aantallen, incl. niet-geocodeerd
+const SHOWERS = SH.showers, HUMAN = SH.human;
+const N_TESTS = SHOWERS.length, SIG = 0.05 / N_TESTS; // Bonferroni
 const MAANDEN = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
 const MAAN_GLYPH = ['\u{1F311}','\u{1F312}','\u{1F313}','\u{1F314}','\u{1F315}','\u{1F316}','\u{1F317}','\u{1F318}'];
 const MAAN_NAAM = ['nieuwe maan','wassende sikkel','eerste kwartier','wassende maan','volle maan','afnemende maan','laatste kwartier','afnemende sikkel'];
-
-// Meteorenzwermen: piek-zonlengte + gemeten ratio uit de volledige dataset
-// ratio + p-waarde: binomiale toets op alle 80.324 meldingen (venster \u00b14\u00b0 vs baseline 5\u201315\u00b0)
-// significantiedrempel p < 0,0056 (0,05 gecorrigeerd voor 9 toetsen, Bonferroni)
-const SHOWERS = [
-  {n:'Quadrantiden', sl:283.2, dat:'3 jan',  ratio:1.46, p:'< 0,001', sig:true,  note:'significant, maar het is vuurwerk: zonder 30 dec\u20132 jan zakt de ratio naar 0,65'},
-  {n:'Lyriden',      sl:32.3,  dat:'22 apr', ratio:0.94, p:'0,054',   sig:false},
-  {n:'\u03b7-Aquariiden', sl:45.5, dat:'6 mei', ratio:0.94, p:'0,025', sig:false},
-  {n:'\u03b4-Aquariiden', sl:127.0, dat:'30 jul', ratio:0.90, p:'< 0,001', sig:false, note:'significant t\u00e9kort \u2014 vermoedelijk de zomerhelling in de data, geen hemeleffect'},
-  {n:'Perse\u00efden',   sl:140.0, dat:'12 aug', ratio:1.30, p:'< 0,001', sig:true, note:'robuuste piek \u2014 blijft staan in elk deeltijdvak'},
-  {n:'Orioniden',    sl:208.0, dat:'21 okt', ratio:0.88, p:'< 0,001', sig:false, note:'significant t\u00e9kort \u2014 vermoedelijk seizoenshelling, geen hemeleffect'},
-  {n:'Z-Tauriden',   sl:223.0, dat:'5 nov',  ratio:0.92, p:'0,003',   sig:false},
-  {n:'Leoniden',     sl:235.3, dat:'17 nov', ratio:1.31, p:'< 0,001', sig:true, note:'topjaar 1999 \u2014 het jaar van de Leonidenstorm'},
-  {n:'Geminiden',    sl:262.2, dat:'14 dec', ratio:1.04, p:'0,24',    sig:false},
-];
 const WIN = 4; // venster ±4° rond gekozen zonlengte
-// Menselijke piekdagen — sterkste 'signalen' in de data, maar aards van oorsprong
-const HUMAN = [
-  {n:'4 juli (VS): vuurwerk', sl:102.7, x:'5,5× een gemiddelde dag'},
-  {n:'jaarwisseling: vuurwerk & wensballonnen', sl:280.5, x:'1 jan is 3× een gemiddelde dag'},
-];
+
+function circ(a,b){return Math.min(Math.abs(a-b),360-Math.abs(a-b));}
+function activeShower(sl){ return SHOWERS.find(s=>circ(sl,s.sl)<=WIN+2) || null; }
 function activeHuman(sl){ return HUMAN.find(h=>circ(sl,h.sl)<=WIN) || null; }
 
 // zonlengte -> geschatte datum (referentiejaar)
@@ -163,21 +152,28 @@ const SL2DATE = [];
 function slDate(sl){
   let best=SL2DATE[0], bd=999;
   for(const e of SL2DATE){const d=Math.min(Math.abs(e[0]-sl),360-Math.abs(e[0]-sl)); if(d<bd){bd=d;best=e;}}
-  return `\u2248 ${best[1]} ${MAANDEN[best[2]-1].slice(0,3)}`;
+  return `≈ ${best[1]} ${MAANDEN[best[2]-1].slice(0,3)}`;
 }
-function circ(a,b){return Math.min(Math.abs(a-b),360-Math.abs(a-b));}
-function activeShower(sl){ return SHOWERS.find(s=>circ(sl,s.sl)<=WIN+2) || null; }
 
 // --- kaart ---
 const map = L.map('map',{zoomControl:false,worldCopyJump:true,attributionControl:false,minZoom:2,maxZoom:8}).setView([28,5],2);
 L.control.zoom({position:'topright'}).addTo(map);
 L.geoJSON(WORLD,{pane:'tilePane',style:{color:'#3A4468',weight:.7,fillColor:'#161F3D',fillOpacity:1,opacity:1},interactive:false}).addTo(map);
-const renderer=L.canvas({padding:.4});
-const layer=L.layerGroup().addTo(map);
 
-const byYear={};for(let y=MIN_Y;y<=MAX_Y;y++)byYear[y]=[];
-DATA.forEach(d=>{if(byYear[d[0]])byYear[d[0]].push(d);});
-function esc(s){const t=document.createElement('span');t.textContent=s;return t.innerHTML;}
+// jaarindex: PTS is gesorteerd op jaar -> [start,eind) per jaar
+const yearStart=new Array(MAX_Y-MIN_Y+2).fill(PTS.length);
+{let y=MIN_Y-1;for(let i=0;i<PTS.length;i++){while(y<PTS[i][1]){y++;yearStart[y-MIN_Y]=i;}}}
+yearStart[MAX_Y-MIN_Y+1]=PTS.length;
+const sliceYear=(a,b)=>PTS.slice(yearStart[a-MIN_Y],yearStart[b-MIN_Y+1]); // a t/m b
+
+// webmercator per punt voorberekend (genormaliseerd 0..1)
+const N=PTS.length, MX=new Float32Array(N), MY=new Float32Array(N);
+for(let i=0;i<N;i++){
+  const la=PTS[i][4]*Math.PI/180;
+  MX[i]=(PTS[i][5]+180)/360;
+  MY[i]=Math.min(1,Math.max(0,.5-Math.log(Math.tan(Math.PI/4+la/2))/(2*Math.PI)));
+  PTS[i].push(i); // eigen index, zodat gefilterde subsets naar MX/MY kunnen wijzen
+}
 
 // jaarkleuren
 const STOPS=[[26,42,140],[38,120,178],[64,190,182],[122,209,81],[233,196,50],[244,120,50],[214,45,60]];
@@ -187,25 +183,109 @@ function yearColor(y){
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-function makeMarker(d,colorByYear){
-  const [jr,mnd,dag,tijd,lat,lon,loc,vorm,duur,desc,slv,mb]=d;
-  const col=colorByYear?yearColor(jr):(mode==='kosmos'?'#7FD1E8':'#FFB454');
-  const m=L.circleMarker([lat,lon],{renderer,radius:colorByYear?4:4.5,color:col,weight:1,opacity:.9,fillColor:col,fillOpacity:colorByYear?.45:.4});
-  m.on('click',()=>{
-    const mm=String(mnd).padStart(2,'0');
-    const src=`https://nuforc.org/subndx/?id=e${jr}${mm}`;
-    const sh=SHOWERS.find(s=>circ(slv,s.sl)<=WIN);
-    m.bindPopup(
-      `<div class="pp-loc">${esc(loc)}</div>`+
-      `<div class="pp-meta"><span class="pp-dot" style="background:${yearColor(jr)}"></span>${dag} ${MAANDEN[mnd-1]} ${jr} \u00b7 ${esc(tijd)} uur${duur?' \u00b7 duur: '+esc(duur):''}</div>`+
-      `<div class="pp-meta">vorm: ${esc(vorm)}</div>`+
-      `<div class="pp-cosmo">${MAAN_GLYPH[mb]} ${MAAN_NAAM[mb]} \u00b7 aardbaan ${slv}\u00b0${sh?`<br>\u2604 in het ${sh.n}-venster (\u00d7${sh.ratio.toFixed(2)})`:''}</div>`+
-      `<div class="pp-desc">${esc(desc)}</div>`+
-      `<div class="pp-src"><a href="${src}" target="_blank" rel="noopener">Volledig rapport op NUFORC (${MAANDEN[mnd-1]} ${jr}) \u2197</a></div>`
-    ).openPopup();
-  });
-  return m;
+// --- canvas-puntenlaag: tekent alle zichtbare meldingen in één keer ---
+const spriteCache=new Map();
+function sprite(color,r){
+  const key=color+'|'+r;
+  let s=spriteCache.get(key);
+  if(s)return s;
+  const dpr=window.devicePixelRatio||1, d=Math.ceil((r+1.5)*2*dpr);
+  s=document.createElement('canvas');s.width=d;s.height=d;
+  const ctx=s.getContext('2d');
+  ctx.globalAlpha=.5;ctx.fillStyle=color;
+  ctx.beginPath();ctx.arc(d/2,d/2,r*dpr,0,2*Math.PI);ctx.fill();
+  ctx.globalAlpha=.95;ctx.lineWidth=dpr;ctx.strokeStyle=color;
+  ctx.beginPath();ctx.arc(d/2,d/2,r*dpr,0,2*Math.PI);ctx.stroke();
+  s._logical=d/dpr;
+  spriteCache.set(key,s);
+  return s;
 }
+const DotLayer=L.Layer.extend({
+  onAdd(m){
+    this._c=document.createElement('canvas');
+    this._c.className='leaflet-zoom-hide';
+    this._c.style.position='absolute';this._c.style.pointerEvents='none';
+    m.getPanes().overlayPane.appendChild(this._c);
+    m.on('moveend zoomend viewreset resize',this.redraw,this);
+    this.redraw();
+    return this;
+  },
+  onRemove(m){this._c.remove();m.off('moveend zoomend viewreset resize',this.redraw,this);},
+  set(pts,colorFn,r){this._pts=pts;this._colorFn=colorFn;this._r=r;this.redraw();},
+  redraw(){
+    if(!this._map||!this._c)return;
+    const m=this._map,size=m.getSize(),dpr=window.devicePixelRatio||1;
+    const c=this._c;
+    L.DomUtil.setPosition(c,m.containerPointToLayerPoint([0,0]));
+    c.width=size.x*dpr;c.height=size.y*dpr;
+    c.style.width=size.x+'px';c.style.height=size.y+'px';
+    const ctx=c.getContext('2d');ctx.scale(dpr,dpr);
+    const pts=this._pts||[];if(!pts.length)return;
+    const world=256*Math.pow(2,m.getZoom()), org=m.getPixelBounds().min;
+    const r=this._r,pad=r+2;
+    let curColor=null,spr=null,half=0;
+    for(let k=0;k<pts.length;k++){
+      const p=pts[k],i=p[9];
+      const col=this._colorFn(p);
+      if(col!==curColor){curColor=col;spr=sprite(col,r);half=spr._logical/2;}
+      const y=MY[i]*world-org.y;
+      if(y<-pad||y>size.y+pad)continue;
+      // wereld herhaalt horizontaal: teken alle zichtbare kopieën
+      const x=(((MX[i]*world-org.x)%world)+world)%world;
+      for(let wx=x-world;wx<=size.x+pad;wx+=world){
+        if(wx>=-pad)ctx.drawImage(spr,wx-half,y-half,spr._logical,spr._logical);
+      }
+    }
+  },
+  // dichtstbijzijnde punt binnen `tol` px van een containerpunt
+  hit(cp,tol){
+    const m=this._map,pts=this._pts||[];
+    const world=256*Math.pow(2,m.getZoom()),org=m.getPixelBounds().min;
+    let best=null,bd=tol*tol;
+    for(let k=0;k<pts.length;k++){
+      const i=pts[k][9];
+      const y=MY[i]*world-org.y;
+      const dy=y-cp.y;if(dy*dy>bd)continue;
+      let x=(((MX[i]*world-org.x)%world)+world)%world;
+      for(let wx=x-world;wx<=m.getSize().x;wx+=world){
+        const dx=wx-cp.x,d=dx*dx+dy*dy;
+        if(d<bd){bd=d;best=pts[k];}
+      }
+    }
+    return best;
+  }
+});
+const dots=new DotLayer().addTo(map);
+
+// --- popup: details worden per maand on demand geladen ---
+const detailCache=new Map();
+function monthDetails(ym){
+  if(!detailCache.has(ym))
+    detailCache.set(ym,fetch(`data/details/${ym}.json`).then(r=>r.ok?r.json():{}));
+  return detailCache.get(ym);
+}
+function esc(s){const t=document.createElement('span');t.textContent=s??'';return t.innerHTML;}
+map.on('click',async e=>{
+  const p=dots.hit(map.latLngToContainerPoint(e.latlng),9);
+  if(!p)return;
+  const [id,jr,mnd,dag,lat,lon,,sl10,mb]=p;
+  const ym=`${String(jr).padStart(4,'0')}${String(mnd).padStart(2,'0')}`;
+  const d=(await monthDetails(ym))[id]||[];
+  const [tijd,plaats,regio,land,vorm,uitleg,tekst]=d;
+  const slv=sl10/10, sh=SHOWERS.find(s=>circ(slv,s.sl)<=WIN);
+  const waar=[plaats,regio].filter(Boolean).join(', ')+(land&&land!=='USA'?' · '+land:'');
+  L.popup({maxWidth:290})
+    .setLatLng([lat,lon])
+    .setContent(
+      `<div class="pp-loc">${esc(waar)||'onbekende locatie'}</div>`+
+      `<div class="pp-meta"><span class="pp-dot" style="background:${yearColor(jr)}"></span>${dag} ${MAANDEN[mnd-1]} ${jr}${tijd?' · '+esc(tijd)+' uur':''}</div>`+
+      (vorm?`<div class="pp-meta">vorm: ${esc(vorm)}</div>`:'')+
+      `<div class="pp-cosmo">${MAAN_GLYPH[mb]} ${MAAN_NAAM[mb]} · aardbaan ${String(slv).replace('.',',')}°${sh?`<br>☄ in het ${sh.n}-venster (×${sh.ratio.toFixed(2)})`:''}</div>`+
+      (tekst?`<div class="pp-desc">${esc(tekst)}</div>`:'')+
+      (uitleg?`<div class="pp-expl">ⓘ mogelijke aardse verklaring: ${esc(uitleg)}</div>`:'')+
+      `<div class="pp-src"><a href="https://nuforc.org/sighting/?id=${id}" target="_blank" rel="noopener">Volledig rapport op NUFORC ↗</a></div>`
+    ).openOn(map);
+});
 
 // --- state ---
 let year=MIN_Y, slSel=140, mode='year', playing=false, timer=null;
@@ -227,57 +307,63 @@ function windowRatio(sl){
     if(c<=WIN)w+=SL_HIST[d]; else if(c>=WIN+1&&c<=15)b+=SL_HIST[d];
   }
   const wd=2*WIN+1,bd=2*(15-WIN);
-  // binomiale toets: onder H0 valt fractie 9/31 van (w+b) in het venster
+  // binomiale toets: onder H0 valt fractie wd/(wd+bd) van (w+b) in het venster
   const tot=w+b,p0=wd/(wd+bd);
   const z=(w-tot*p0)/Math.sqrt(tot*p0*(1-p0));
   const p=2*(1-0.5*(1+erf(Math.abs(z)/Math.SQRT2)));
   return {w,ratio:(w/wd)/(b/bd),z,p};
 }
 function fmtP(p){return p<0.001?'< 0,001':('= '+p.toFixed(3).replace('.',','));}
+const fmtN=n=>n.toLocaleString('nl-NL');
+
+function yearTicks(){
+  const q=(MAX_Y-MIN_Y)/4;
+  return [MIN_Y,Math.round((MIN_Y+q)/10)*10,Math.round((MIN_Y+2*q)/10)*10,Math.round((MIN_Y+3*q)/10)*10,MAX_Y];
+}
 
 function render(){
-  layer.clearLayers();
-  let pts=[],colorByYear=false;
-  if(mode==='all'){pts=DATA;colorByYear=true;}
-  else if(mode==='cum'){for(let y=MIN_Y;y<=year;y++)pts=pts.concat(byYear[y]);}
-  else if(mode==='kosmos'){pts=DATA.filter(d=>circ(d[10],slSel)<=WIN);}
-  else pts=byYear[year];
-  pts.forEach(d=>layer.addLayer(makeMarker(d,colorByYear)));
+  let pts,colorFn,r;
+  if(mode==='all'){pts=PTS;colorFn=p=>yearColor(p[1]);r=2;}
+  else if(mode==='cum'){pts=sliceYear(MIN_Y,year);colorFn=()=>'#FFB454';r=2.2;}
+  else if(mode==='kosmos'){pts=PTS.filter(p=>circ(p[7]/10,slSel)<=WIN);colorFn=()=>'#7FD1E8';r=2.6;}
+  else{pts=sliceYear(year,year);colorFn=()=>'#FFB454';r=3.2;}
+  dots.set(pts,colorFn,r);
+  map.closePopup();
 
   let realN;
   if(mode==='all') realN=YEAR_HIST.reduce((a,b)=>a+b,0);
   else if(mode==='cum') realN=YEAR_HIST.slice(0,year-MIN_Y+1).reduce((a,b)=>a+b,0);
   else if(mode==='year') realN=YEAR_HIST[year-MIN_Y];
   else realN=null;
-  countEl.textContent = realN!==null ? realN.toLocaleString('nl-NL') : pts.length.toLocaleString('nl-NL');
+  countEl.textContent = realN!==null ? fmtN(realN) : fmtN(pts.length);
   tl.classList.toggle('total',mode==='all');
   tl.classList.toggle('kosmos',mode==='kosmos');
   hud.classList.toggle('kosmos',mode==='kosmos');
 
   if(mode==='kosmos'){
-    yearEl.textContent=`${slSel}\u00b0 ${slDate(slSel)}`;
-    countLabel.textContent='meldingen op dit stuk aardbaan (alle jaren)';
+    yearEl.textContent=`${slSel}° ${slDate(slSel)}`;
+    countLabel.textContent=`op dit stuk aardbaan (alle jaren) · ${fmtN(pts.length)} op de kaart`;
     const {w,ratio,p}=windowRatio(slSel);
+    countEl.textContent=fmtN(w);
     const sh=activeShower(slSel);
     const hu=activeHuman(slSel);
-    const SIG=0.0056; // 0,05 / 9 toetsen (Bonferroni)
     let oordeel;
-    if(p<SIG && ratio>1) oordeel=hu?'significante piek (\u26a0 menselijke oorzaak)':'<b>significante piek</b>';
+    if(p<SIG && ratio>1) oordeel=hu?'significante piek (⚠ menselijke oorzaak)':'<b>significante piek</b>';
     else if(p<SIG && ratio<1) oordeel='significant tekort (vermoedelijk seizoenseffect)';
     else oordeel='geen significant effect';
     cosmoStat.innerHTML=
-      `Volledige dataset: <b>${w.toLocaleString('nl-NL')}</b> meldingen in dit venster (\u00b1${WIN}\u00b0)<br>`+
-      `<b>\u00d7${ratio.toFixed(2)}</b> t.o.v. omliggende dagen \u00b7 p ${fmtP(p)} \u2192 ${oordeel}`+
-      (sh?`<br>\u2604 <b>${sh.n}</b> (piek ${sh.dat}) \u00b7 p ${sh.p}${sh.note?'<br>'+sh.note:''}`:'')+
-      (hu?`<br>\u26a0 <b>${hu.n}</b> \u2014 ${hu.x}; deze piek is menselijk, niet kosmisch`:'')+
-      `<br><span style="opacity:.75">Maanfase-effect over de hele dataset: meer meldingen rond nieuwe maan (\u03c7\u00b2 = 136,7; p < 0,001). Drempel per toets: p < 0,0056 (9 toetsen, Bonferroni).</span>`;
+      `Volledige dataset: <b>${fmtN(w)}</b> meldingen in dit venster (±${WIN}°)<br>`+
+      `<b>×${ratio.toFixed(2)}</b> t.o.v. omliggende dagen · p ${fmtP(p)} → ${oordeel}`+
+      (sh?`<br>☄ <b>${sh.n}</b> (piek ${sh.dat}) · ×${sh.ratio.toFixed(2)} · p ${sh.p}${sh.note?'<br>'+sh.note:''}`:'')+
+      (hu?`<br>⚠ <b>${hu.n}</b> — ${hu.x}; deze piek is menselijk, niet kosmisch`:'')+
+      `<br><span style="opacity:.75">Maanfase-effect over de hele dataset: meeste meldingen rond ${MAAN_NAAM[SH.moon.peakPhase]} (χ² = ${String(SH.moon.chi2).replace('.',',')}; ${SH.moon.sig?'p < 0,001':'niet significant'}). Drempel per toets: p < ${SIG.toFixed(4).replace('.',',')} (${N_TESTS} toetsen, Bonferroni).</span>`;
     tlLabels.innerHTML='<span>mrt</span><span>jun</span><span>sep</span><span>dec</span><span>mrt</span>';
     slider.min=0;slider.max=359;slider.value=slSel;
   }else{
-    yearEl.textContent=mode==='all'?'\u2014':year;
-    const shown=` \u00b7 ${pts.length.toLocaleString('nl-NL')} op de kaart (steekproef)`;
-    countLabel.textContent=(mode==='all'?'meldingen, 1930\u20132014':mode==='cum'?`meldingen t/m ${year}`:`meldingen in ${year}`)+shown;
-    tlLabels.innerHTML='<span>1930</span><span>1950</span><span>1970</span><span>1990</span><span>2014</span>';
+    yearEl.textContent=mode==='all'?'—':year;
+    const shown=` · ${fmtN(pts.length)} op de kaart`;
+    countLabel.textContent=(mode==='all'?`meldingen, ${MIN_Y}–${MAX_Y}`:mode==='cum'?`meldingen t/m ${year}`:`meldingen in ${year}`)+shown;
+    tlLabels.innerHTML=yearTicks().map(t=>`<span>${t}</span>`).join('');
     slider.min=MIN_Y;slider.max=MAX_Y;slider.value=year;
   }
   drawHisto();drawOrbit();
@@ -308,15 +394,14 @@ function drawHisto(){
       ctx.fillStyle='rgba(255,180,84,.12)';
       ctx.fillRect((hm.sl-WIN)/360*w,0,(2*WIN)/360*w,h-12);
     }
-    // zwermlabels (afkorting) onderaan
+    // markeer significante zwermen onderaan
     ctx.fillStyle='#8B93B0';ctx.font='8.5px Chakra Petch,sans-serif';ctx.textAlign='center';
-    for(const s of SHOWERS){if(s.sig)ctx.fillText('\u2604',s.sl/360*w,h-2);}
+    for(const s of SHOWERS){if(s.sig&&s.ratio>1)ctx.fillText('☄',s.sl/360*w,h-2);}
   }else{
     const n=MAX_Y-MIN_Y+1,bw=w/n;
-    const byY=YEAR_HIST; // echte aantallen, niet de steekproef
-    const max=Math.max(...byY);
+    const max=Math.max(...YEAR_HIST);
     for(let i=0;i<n;i++){
-      const y=MIN_Y+i,v=byY[i]/max,bh=Math.max(1.5,v*(h-6));
+      const y=MIN_Y+i,v=YEAR_HIST[i]/max,bh=Math.max(1.5,v*(h-6));
       let fill;
       if(mode==='all')fill=yearColor(y);
       else{const sel=mode==='cum'?(y<=year):(y===year);fill=sel?'#FFB454':'#2A3354';}
@@ -378,18 +463,19 @@ function setMode(m){
 Object.keys(modeBtns).forEach(k=>modeBtns[k].addEventListener('click',()=>setMode(k)));
 
 const playBtn=document.getElementById('playBtn');
-function stopPlay(){playing=false;clearInterval(timer);playBtn.innerHTML='\u25ba afspelen';playBtn.classList.remove('active');}
+function stopPlay(){playing=false;clearInterval(timer);playBtn.innerHTML='► afspelen';playBtn.classList.remove('active');}
 playBtn.addEventListener('click',()=>{
   if(playing){stopPlay();return;}
   if(mode==='all')setMode('year');
-  playing=true;playBtn.innerHTML='\u275a\u275a pauze';playBtn.classList.add('active');
+  playing=true;playBtn.innerHTML='❚❚ pauze';playBtn.classList.add('active');
   timer=setInterval(()=>{
     if(mode==='kosmos'){slSel=(slSel+2)%360;}
     else{year++;if(year>=MAX_Y){year=MAX_Y;stopPlay();}}
     render();
-  },mode==='kosmos'?140:380);
+  },mode==='kosmos'?140:300);
 });
 window.addEventListener('resize',()=>{drawHisto();drawOrbit();});
+year=1947; // beginjaar met wat te zien (Roswell-tijdperk)
 render();
 </script>
 </body>
