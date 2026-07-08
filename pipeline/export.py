@@ -3,7 +3,8 @@
   data/points.json          compact: alle gegeocodeerde meldingen (kaartpunten)
                             {"minYear","maxYear","shapes":[...],
                              "points":[[id,jaar,maand,dag,lat,lon,vormIdx,zonlengte*10,maanfase],...]}
-  data/details/YYYYMM.json  popupdetails per maand: {id:[tijd,plaats,regio,land,duur/uitleg,samenvatting]}
+  data/details/YYYYMM.json  details per maand (popup + lijstweergave):
+                            {id:[dag,tijd,plaats,regio,land,vorm,uitleg,samenvatting]}
   data/slhist.json          meldingen per graad zonlengte (alle meldingen met datum)
   data/yearhist.json        {"min","max","counts":[...]} per jaar (alle meldingen met datum)
   data/showers.json         herberekende statistiek: zwerm-ratio's + p-waarden,
@@ -62,7 +63,7 @@ def main():
         n_all += 1
         ym = f"{r['year']:04d}{r['month']:02d}"
         details[ym][r["source_id"]] = [
-            r["time"], r["city"], r["region"], r["country"],
+            r["day"], r["time"], r["city"], r["region"], r["country"],
             canon_shape(r["shape"]), r["explanation"], r["summary"],
         ]
         if r["lat"] is None:

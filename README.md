@@ -10,6 +10,12 @@ Interactieve wereldkaart van alle geocodeerbare UFO-meldingen uit de database va
   live binomiale toets (ratio + p-waarde, Bonferroni-gecorrigeerd) en waarschuwingen voor
   menselijke pieken (4 juli, jaarwisseling)
 
+Daarnaast een **lijstweergave** (knop rechtsboven): doorzoekbare index per jaar met
+vrije-tekstzoek en filters op vorm en land — inclusief de meldingen zonder coördinaten
+die niet op de kaart staan — met per rij een sprong naar de kaart en de NUFORC-bron.
+De ondergrond is schakelbaar tussen **echte satellietbeelden** (Esri World Imagery,
+inzoombaar tot straatniveau) en de gestileerde donkere kaart.
+
 Elke melding is klikbaar: datum, tijdstip, vorm, maanfase, baanpositie, eventuele aardse
 verklaring en een directe bronlink naar het NUFORC-rapport.
 
@@ -19,7 +25,8 @@ verklaring en een directe bronlink naar het NUFORC-rapport.
 index.html               de complete applicatie (Leaflet + eigen canvas-puntenlaag, geen build)
 data/points.json         alle gegeocodeerde meldingen, compact:
                          [nuforcId, jaar, maand, dag, lat, lon, vormIdx, zonlengte×10, maanfase]
-data/details/YYYYMM.json popupdetails per maand, on demand geladen
+data/details/YYYYMM.json details per maand (popup + lijstweergave), on demand geladen:
+                         {id:[dag,tijd,plaats,regio,land,vorm,uitleg,samenvatting]}
 data/slhist.json         meldingen per graad zonlengte (volledige dataset)
 data/yearhist.json       meldingen per jaar (volledige dataset)
 data/showers.json        herberekende statistiek: zwerm-ratio's, p-waarden, maanfase-χ²
@@ -61,7 +68,8 @@ Statische site, geen build stap. Importeer deze repo op [vercel.com/new](https:/
 
 ## Bronnen
 
-Meldingen: National UFO Reporting Center (NUFORC). Geocoding: GeoNames (cities500).
-Landgrenzen: Natural Earth. Astronomie (zonlengte, maanfase): berekend met standaard
+Meldingen: National UFO Reporting Center (NUFORC). Geocoding: GeoNames (cities500 +
+landbestanden US/CA/GB/AU). Satellietbeelden: Esri World Imagery (Esri, Maxar,
+Earthstar Geographics). Landgrenzen: Natural Earth. Astronomie (zonlengte, maanfase): berekend met standaard
 benaderingsformules. Meteorenzwerm-pieken: IMO-kalender; ratio's en p-waarden worden
 bij elke export herberekend op de volledige dataset.
